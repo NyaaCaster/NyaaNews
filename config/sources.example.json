@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":[{"id":"sample_feed","feed_url":"https://example.invalid/feed.xml","topics":["sample"],"enabled":false,"weight":1,"include":[],"exclude":[],"source_timezone":null}]}

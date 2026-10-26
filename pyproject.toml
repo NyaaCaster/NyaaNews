@@ -1,0 +1,22 @@
+[project]
+name = "nyaanews"
+version = "0.1.0"
+description = "RSS/Atom news archiving and knowledge-base synchronization"
+requires-python = ">=3.12"
+dependencies = [
+  "feedparser==6.0.12",
+  "trafilatura==2.0.0",
+  "beautifulsoup4==4.14.3",
+  "urllib3==2.5.0",
+  "python-dotenv==1.2.1",
+  "PyYAML==6.0.3",
+  "filelock==3.20.0",
+  "tzdata==2025.2",
+]
+[project.scripts]
+nyaanews = "nyaanews.cli:main"
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["src"]
