@@ -42,6 +42,7 @@ ops/kb_gateway.py 必须由该服务管理员安装，并绑定单个知识库�
     PYTHONPATH=src python -m unittest discover -s tests -v
 
 实际状态见 .docs/开发计划-SSOT.md，完整接入与维护步骤见 .docs/运维说明.md。
+项目整体架构、模块、数据契约及设计方法见 [NyaaNews 猫猫报纸技术文档](.docs/NyaaNews-猫猫报纸.md)。
 容器 healthy 表示调度存活；partial 批次的业务失败仍需查看逐轮日志。
 此前 33 篇下载验证只证明传输/提取路径，不代表每日主题和日期验收。
 
