@@ -1,1 +1,15 @@
-{"schema_version":1,"topics":[{"id":"sample","name":"Example topic","enabled":true,"max_articles_per_day":3}]}
+{
+  "schema_version": 1,
+  "topics": [
+    {
+      "id": "sample",
+      "name": "Example topic",
+      "enabled": true,
+      "max_articles_per_day": 3,
+      "source_order": [
+        "sample_feed",
+        "backup_feed"
+      ]
+    }
+  ]
+}

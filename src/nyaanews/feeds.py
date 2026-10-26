@@ -7,7 +7,7 @@ from .util import digest, normalize_url, parse_date, now
 from .network import FetchError
 
 def parse_feed(body, url, sid):
-    parsed = feedparser.parse(body, response_headers={"content-location": url})
+    parsed = feedparser.parse(body, response_headers={"content-location": url,"content-type":"application/xml"})
     if not parsed.get("version") or (parsed.bozo and not parsed.entries):
         raise ValueError("invalid_feed")
     if len(parsed.entries) > 5000:
@@ -50,7 +50,10 @@ def poll(source, store, http, refresh=False):
     if not refresh and old.get("last_modified"):
         headers["If-Modified-Since"] = old["last_modified"]
     try:
-        response = http.get(source["feed_url"], headers)
+        if source.get("feed_http_profile","standard")=="standard":
+            response = http.get(source["feed_url"], headers)
+        else:
+            response = http.get(source["feed_url"], headers,profile=source["feed_http_profile"])
         if response.status == 304:
             old.update(status="succeeded", failures=0, next_retry_at=None, last_success=now().isoformat())
             store.put_source(sid, old, [])

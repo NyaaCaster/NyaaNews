@@ -68,8 +68,10 @@ class Store:
         with self.write() as db:
             db.execute("UPDATE candidates SET status=?,reason=? WHERE id=?", (status, reason, cid))
 
-    def candidates(self):
-        rows = self.db.execute("SELECT payload FROM candidates WHERE status IN ('discovered','deferred')").fetchall()
+    def candidates(self, source_id=None):
+        query="SELECT payload FROM candidates WHERE status IN ('discovered','deferred')"
+        rows = self.db.execute(query+(" AND source_id=?" if source_id else ""),
+                               (source_id,) if source_id else ()).fetchall()
         return [json.loads(r[0]) for r in rows]
 
     def count(self, day, topic):

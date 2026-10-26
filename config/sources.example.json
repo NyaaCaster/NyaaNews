@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "sources": [
     {
       "id": "sample_feed",
@@ -12,7 +12,34 @@
       "include": [],
       "exclude": [],
       "source_timezone": null,
-      "article_http_profile": "standard"
+      "article_http_profile": "standard",
+      "feed_http_profile": "standard",
+      "topic_rules": {
+        "sample": {
+          "include": [],
+          "exclude": []
+        }
+      }
+    },
+    {
+      "id": "backup_feed",
+      "feed_url": "https://backup.example.invalid/feed.xml",
+      "topics": [
+        "sample"
+      ],
+      "enabled": false,
+      "weight": 1,
+      "include": [],
+      "exclude": [],
+      "source_timezone": null,
+      "article_http_profile": "standard",
+      "feed_http_profile": "standard",
+      "topic_rules": {
+        "sample": {
+          "include": [],
+          "exclude": []
+        }
+      }
     }
   ]
 }

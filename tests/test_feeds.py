@@ -10,6 +10,9 @@ RSS = b'<rss version="2.0"><channel><title>Example</title><item><title>A</title>
 ATOM = b'<feed xmlns="http://www.w3.org/2005/Atom"><title>Sample</title><entry><id>x</id><title>A</title><published>2026-10-25T12:00:00Z</published><link rel="alternate" type="text/html" href="https://example.invalid/a"/><link rel="replies" type="application/atom+xml" href="https://example.invalid/a/feed/"/></entry></feed>'
 
 class FeedTests(unittest.TestCase):
+    def test_valid_empty_feed_is_not_a_fetch_failure(self):
+        self.assertEqual(parse_feed(b'<rss version="2.0"><channel><title>Empty</title></channel></rss>',
+                                   'https://example.invalid/feed','sample'),[])
     def test_atom_alternate_not_last_reply(self):
         self.assertEqual(parse_feed(ATOM, "https://example.invalid/feed", "sample")[0]["url"],
                          "https://example.invalid/a")
