@@ -34,7 +34,7 @@ class Config:
     def load(cls, path):
         path = Path(path).resolve()
         values = dict(dotenv_values(path, interpolate=False))
-        for key in ("DATA_DIR", "NYAANEWS_CONFIG"):
+        for key in ("DATA_DIR", "NYAANEWS_CONFIG", "REQUIRE_MOUNT"):
             if os.environ.get(key):
                 values[key] = os.environ[key]
         base = path.parent
