@@ -32,7 +32,39 @@ class PublicHTTP:
         self.max_bytes, self.timeout, self.gap = max_bytes, timeout, gap
         self.last = {}
 
-    def get(self, url, headers=None):
+    def _curl_get(self, url, parts, ip, port, headers, started):
+        from curl_cffi import requests, CurlOpt
+        blocks=[]
+        total=0
+        failure=None
+        def collect(block):
+            nonlocal total, failure
+            total+=len(block)
+            if total>self.max_bytes:
+                failure=FetchError("response_too_large")
+            elif time.monotonic()-started>90:
+                failure=FetchError("request_deadline")
+            if failure:
+                raise failure
+            blocks.append(block)
+            return len(block)
+        address=f"[{ip}]" if ":" in ip else ip
+        options={CurlOpt.RESOLVE:[f"{parts.hostname}:{port}:{address}"],CurlOpt.PROXY:""}
+        try:
+            with requests.Session(curl_options=options,trust_env=False) as session:
+                result=session.get(url,headers=headers,impersonate="chrome",verify=True,
+                    allow_redirects=False,timeout=(10,min(self.timeout, max(1,90-(time.monotonic()-started)))),
+                    content_callback=collect,accept_encoding="identity")
+                return Response(url,result.status_code,
+                    {k.lower():v for k,v in result.headers.items()},b"".join(blocks))
+        except Exception:
+            if failure:
+                raise failure from None
+            raise
+
+    def get(self, url, headers=None, *, profile="standard"):
+        if profile not in ("standard","chrome"):
+            raise ValueError("invalid_http_profile")
         url = normalize_url(url)
         started = time.monotonic()
         original = urlsplit(url).netloc
@@ -47,8 +79,9 @@ class PublicHTTP:
             wait = self.gap - (time.monotonic() - self.last.get(parts.hostname, 0))
             if wait > 0:
                 time.sleep(wait)
-            request_headers = {"Host": parts.netloc, "User-Agent": "NyaaNews/0.1 RSS archive",
-                               "Accept-Encoding": "identity"}
+            request_headers = {"Host": parts.netloc, "Accept-Encoding": "identity"}
+            if profile=="standard":
+                request_headers["User-Agent"]="NyaaNews/0.1 RSS archive"
             if parts.netloc == original:
                 request_headers.update(headers or {})
             request_path = parts.path or "/"
@@ -56,7 +89,9 @@ class PublicHTTP:
                 request_path += "?" + parts.query
             options = dict(port=port, timeout=urllib3.Timeout(connect=10, read=self.timeout),
                            retries=False)
-            if parts.scheme == "https":
+            if profile=="chrome":
+                pool=None
+            elif parts.scheme == "https":
                 pool = urllib3.HTTPSConnectionPool(ips[0], server_hostname=parts.hostname,
                     assert_hostname=parts.hostname, cert_reqs="CERT_REQUIRED",
                     ssl_context=ssl.create_default_context(), **options)
@@ -64,10 +99,15 @@ class PublicHTTP:
                 pool = urllib3.HTTPConnectionPool(ips[0], **options)
             response = None
             try:
-                response = pool.urlopen("GET", request_path, headers=request_headers,
-                    redirect=False, assert_same_host=False, preload_content=False)
-                rh = {k.lower(): v for k, v in response.headers.items()}
-                if response.status in (301, 302, 303, 307, 308):
+                if profile=="chrome":
+                    fetched=self._curl_get(url,parts,ips[0],port,request_headers,started)
+                    status,rh=fetched.status,fetched.headers
+                else:
+                    response = pool.urlopen("GET", request_path, headers=request_headers,
+                        redirect=False, assert_same_host=False, preload_content=False)
+                    status=response.status
+                    rh = {k.lower(): v for k, v in response.headers.items()}
+                if status in (301, 302, 303, 307, 308):
                     location = rh.get("location")
                     if not location:
                         raise FetchError("redirect_without_location")
@@ -76,10 +116,13 @@ class PublicHTTP:
                         raise FetchError("tls_downgrade")
                     url = target
                     continue
-                if response.status == 304:
+                if status == 304:
                     return Response(url, 304, rh, b"")
-                if response.status != 200:
-                    raise FetchError("http_error", response.status, rh.get("retry-after"))
+                if status != 200:
+                    kind="browser_challenge" if rh.get("cf-mitigated","").lower()=="challenge" else "http_error"
+                    raise FetchError(kind, status, rh.get("retry-after"))
+                if profile=="chrome":
+                    return fetched
                 total = 0
                 blocks = []
                 for block in response.stream(65536, decode_content=True):
@@ -98,6 +141,7 @@ class PublicHTTP:
             finally:
                 if response:
                     response.close()
-                pool.close()
+                if pool:
+                    pool.close()
                 self.last[parts.hostname] = time.monotonic()
         raise FetchError("too_many_redirects")

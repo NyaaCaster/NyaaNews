@@ -47,6 +47,8 @@ class Config:
             if type(cap) is not int or not 0 <= cap <= 50:
                 raise ValueError("Invalid daily cap")
         for source in sources:
+            if source.get("article_http_profile","standard") not in ("standard","chrome"):
+                raise ValueError("Invalid article HTTP profile")
             if not source.get("topics") or not set(source["topics"]).issubset(ids):
                 raise ValueError("Source has missing or unknown topics")
             if not source.get("feed_url", "").startswith(("https://", "http://")):

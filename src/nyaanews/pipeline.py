@@ -90,7 +90,11 @@ def _run(cfg, day, refresh, http, run_sync):
                 store.candidate_status(candidate["id"], "deduplicated")
                 continue
             try:
-                article = extract_article(http.get(candidate["url"]), candidate, source)
+                if source.get("article_http_profile","standard")=="standard":
+                    response=http.get(candidate["url"])
+                else:
+                    response=http.get(candidate["url"],profile=source["article_http_profile"])
+                article = extract_article(response, candidate, source)
                 published = parse_date(article["published_at"])
                 if not (start <= published < end):
                     # Preserve for its own day; do not globally reject it.
@@ -109,8 +113,10 @@ def _run(cfg, day, refresh, http, run_sync):
             except Exception as exc:
                 failed_topics.update(possible)
                 reason = getattr(exc, "kind", None) or (str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
-                store.candidate_status(candidate["id"], "deferred", reason[:100])
-                report["errors"].append({"candidate":candidate["id"],"reason":reason[:100]})
+                status=getattr(exc,"status",0)
+                stored_reason=reason+(f":{status}" if status else "")
+                store.candidate_status(candidate["id"], "deferred", stored_reason[:100])
+                report["errors"].append({"candidate":candidate["id"],"reason":reason[:100],"http_status":status})
         source_states = {r["id"]:r["status"] for r in report["sources"]}
         for tid, topic in topics.items():
             count = store.count(str(day), tid)

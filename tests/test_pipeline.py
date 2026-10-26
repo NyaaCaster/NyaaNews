@@ -6,6 +6,7 @@ import unittest
 from nyaanews.config import Config
 from nyaanews.pipeline import archive_run
 from nyaanews.network import Response
+from nyaanews.network import FetchError
 from nyaanews.extract import extract_article
 from test_feeds import RSS
 from datetime import datetime, timezone, timedelta
@@ -16,6 +17,24 @@ HTML = ('<html lang="en"><head><meta property="article:published_time" content="
         '<body><article><h1>Calibration report</h1><p>' + BODY + '</p></article></body></html>').encode()
 
 class PipelineTests(unittest.TestCase):
+    def test_source_profile_and_http_failure_are_recorded(self):
+        class HTTP:
+            def get(inner,url,headers=None,*,profile='standard'):
+                if url.endswith('feed'):
+                    return Response(url,200,{},RSS)
+                self.assertEqual(profile,'chrome')
+                raise FetchError('browser_challenge',403)
+        with tempfile.TemporaryDirectory() as td:
+            data=Path(td)
+            cfg=Config(data/'runtime.env',{},[{'id':'sample'}],
+                [{'id':'feed','feed_url':'https://example.invalid/feed','topics':['sample'],
+                  'article_http_profile':'chrome'}],data,ZoneInfo('Asia/Shanghai'))
+            report=archive_run(cfg,date(2026,10,25),http=HTTP(),run_sync=False)
+            self.assertEqual(report['status'],'partial')
+            self.assertEqual(report['errors'][0]['reason'],'browser_challenge')
+            self.assertEqual(report['errors'][0]['http_status'],403)
+            self.assertEqual(report['topics']['sample']['status'],'deferred')
+
     def test_three_days_eleven_topics_and_repeated_runs(self):
         class HTTP:
             day=date(2026,10,23)
