@@ -1,0 +1,39 @@
+services:
+  nyaanews:
+    image: ${PRIVATE_DOCKER_REGISTRY_HOST:?err}/nyaanews:latest
+    container_name: nyaanews
+    restart: unless-stopped
+    environment:
+      NYAANEWS_CONFIG: /run/nyaanews-config/runtime.env
+      DATA_DIR: /data
+      REQUIRE_MOUNT: "1"
+    volumes:
+      - type: bind
+        source: ${HOST_DATA_DIR:?Set HOST_DATA_DIR}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOST_BACKUP_DIR:?Set HOST_BACKUP_DIR}
+        target: /data/backups
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.env
+        target: /run/nyaanews-config
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "/app/ops/container.py", "health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

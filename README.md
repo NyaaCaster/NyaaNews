@@ -6,12 +6,12 @@ RSS/Atom 驱动的每日公开新闻原文归档工具，可同步到现有 Astr
 ## 配置与运行
 
 1. 从 config/ 下示例创建私有 .env/runtime.env、topics.json 和 sources.json。
-2. 在宿主机创建数据根目录，设置 HOST_DATA_DIR；Windows 数据盘示例为 E:/DockerRes/NyaaNews。
+2. 在宿主机创建数据根目录，设置 HOST_DATA_DIR；生产数据目录为 /root/DockerContainer/DockerRes/NyaaNews；本地开发示例为 E:/DockerRes/NyaaNews。
 3. 为每个主题配置 source_order，并在来源中配置对应 topic_rules。include/exclude 筛选标题、摘要和 URL；title_include/title_exclude 可约束标题，避免将泛技术站整站归入专业主题。
-4. 执行 python rebuild.py 构建镜像。
-5. 执行 docker compose --env-file .env/runtime.env up -d 运行。
+4. 在开发机私有配置中设置镜像仓库，执行 python rebuild.py 构建并推送；仅本地构建使用 --skip-push。
+5. 在 macmini 准备生产 .env/，使用 docker-compose.publish.yml 和 python3 restart.py 部署。详细流程见 [生产部署说明](.docs/生产部署-macmini.md)。
 
-默认每日 08:00 按配置时区采集前一自然日。没有合格文章的主题允许为空。
+生产采集器部署在 macmini，本机仅用于开发和构建。默认每日 08:00 按配置时区采集前一自然日。没有合格文章的主题允许为空。
 新闻、状态、日志和备份均存 /data 的宿主机绑定目录；任务临时目录会被清理。
 秘密和历史参考资料不进入镜像或 Git。项目不含个人订阅列表。
 

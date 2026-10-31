@@ -1,7 +1,7 @@
 # 猫猫报纸（NyaaNews）开发计划 SSOT
 
-版本：V1 / 0.2.0。更新日期：2026-10-26。
-用户已批准自动实现及本机 Docker 部署；P1–P5 及 P6 多来源补足开发与部署完成，连续真实 3 日观察待满期。本文为开发状态的唯一事实来源。
+版本：V1 / 0.2.0。更新日期：2026-11-01。
+用户已批准自动实现，并于 2026-11-01 授权迁至 macmini 生产部署；P1–P5 及 P6 多来源补足开发与部署完成，连续真实 3 日观察待满期。本文为开发状态的唯一事实来源。
 
 ## 目标与边界
 
@@ -9,8 +9,8 @@
 - 北京时间每天 08:00 采集前一自然日，使用本地日期到 UTC 的半开时间窗。
 - 当前私有配置有 11 个主题，每类最多 3 篇；不够时留空，不以旧文或无关文补数。
 - 标题、正文、原文 URL、canonical URL、发布时间、订阅时间和抓取时间可追溯。
-- 正式数据位于 E:/DockerRes/NyaaNews，通过 bind mount 映射到容器 /data。
-- 仅在本机 Docker Desktop 部署，不在 macmini 部署新闻采集器，不发布远程镜像。
+- 生产数据位于 macmini 的 /root/DockerContainer/DockerRes/NyaaNews，通过 bind mount 映射到容器 /data；本地 E:/DockerRes/NyaaNews 保留迁移前副本。
+- 2026-11-01 用户将生产部署切换到 macmini。本机停止采集容器，只负责开发、构建和推送镜像；生产使用 docker-compose.publish.yml 与 restart.py。
 - 外部既有 AstrBot 接收去重后的文档；使用专用受限 SSH 网关调用其 API。
 - 无 LLM、dsh、新闻 API 或 MCP 运行依赖。
 
@@ -39,7 +39,7 @@ Dockerfile 只复制锁定依赖、src 和容器调度入口。配置只读挂�
 ## 已确认架构与实现契约
 
 Python 3.12 + feedparser + urllib3 + Trafilatura + BeautifulSoup + SQLite + filelock。
-requirements.lock 锁定版本及哈希。rebuild.py 只构建本机镜像，compose 负责运行。
+requirements.lock 锁定版本及哈希。rebuild.py 构建并推送 SHA/latest 标签，绝不启动容器；--skip-push 只本地构建。restart.py 在生产机核验存储后拉取并重启。
 
 1. 持有数据目录运行锁后，恢复通过哈希校验的孤立归档，并清理上轮临时目录。
 2. 按品目 source_order 在仍有缺额时依次轮询启用来源，满额即停止；共享源每轮只轮询一次。支持 RSS/Atom、alternate 链接、ETag、Last-Modified、304 缓存、watermark 和失败退避。更换订阅地址时重置旧地址的缓存与退避。
@@ -93,9 +93,9 @@ SSH 专用密钥使用 forced-command，入口只允许目标知识库及本项�
 ## 持续运行验收与已知边界
 
 连续 3 个真实运行日的定时观测尚未满期。模拟 3 日测试与单次真实 cron 通过不能替代这一时间条件；开发部署完成后仍需检查后续每日记录。
-宿主机和 Docker Desktop 必须在调度时运行；V1 不自动补采关机期间漏掉的日期，可用 run --date 手动补采。
+生产宿主机和 Docker 服务必须在调度时运行；V1 不自动补采关机期间漏掉的日期，可用 run --date 手动补采。
 本站点反爬、动态正文与发布时间缺失可能造成真实缺口，见逐轮日志，不用模型补写。
-当前 Docker 到局域网直连超时，SSH 使用宿主机既有 SOCKS 服务；该服务不可用时同步会失败并留下状态。
+历史 Windows Docker 使用宿主机 SOCKS；生产迁移配置禁用该依赖，连接结果以 P7 验收为准。
 备份和历史运行记录不自动删除，容量保留策略需另行明确；只自动清理临时工作目录。
 
 ## 0.1.1 正文请求兼容性修复（✅ 已完成）
@@ -144,3 +144,18 @@ SSH 专用密钥使用 forced-command，入口只允许目标知识库及本项�
 - 最终同日重跑新增归档 0、入库 0，21 个来源按未满额品目的需要轮询、12 个来源全局跳过；满额品目 sources_used 为空。
 - 所有 17 篇本地哈希及远端文本块复核通过，正式临时目录为空；镜像逐层扫描 10,197 个文件，配置隔离通过。
 - 临时来源研究脚本和中间构建镜像已清理，实测记录转存私有 .ref/；保护备份与正式资料保留。
+
+
+## P7：macmini 生产迁移（🟡 进行中，2026-11-01）
+
+本轮明确授权取代之前“仅本机部署”的决定。旧阶段中的本机验收是历史记录。
+
+- 已先停止并移除 Windows NyaaNews 容器，避免两端日调度和状态分叉。
+- 生产部署目录 /root/DockerContainer/NyaaNews；数据根目录位于已挂载的大储存盘 DockerRes/NyaaNews。
+- 生产专用 Compose 只引用私有镜像，地址来自私有配置；数据及 /data/backups 分别绑定业务目录和统一备份目录。
+- 运行数据库备份目录为 DockerRes/backups/NyaaNews/deployments/database；迁移恢复包、配置和校验清单位于同项目 deployments 的迁移事件目录。
+- 迁移前本地共有 88 篇正式文章，outbox 全部 verified；完整数据和历史备份迁移后逐文件校验 SHA-256，并检查数据库完整性。
+- 生产配置禁用 Windows SOCKS 依赖，复用专用受限 SSH key 和已认证的主机密钥，验证从新容器访问既有 AstrBot。
+- rebuild.py 对注册表输出掩码；先解析保留 SHA/latest 的 digest，再删除不同 digest 的旧清单。无法确认保留 digest 则停止清理。
+- restart.py 先核验存储挂载与目录范围，再 pull → down → up → 健康核验；只清理本项目带标签的悬空镜像。
+- 待完成：推送镜像、生产启动、订阅/原文/知识库验证、调度核验、文档与交接收尾。

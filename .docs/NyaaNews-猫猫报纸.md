@@ -1,14 +1,16 @@
 # 技术文档：NyaaNews 猫猫报纸
 
-本文说明猫猫报纸的业务使用方法、完整工程结构、配置和数据契约、每日采集与知识库同步流程、本机 Docker 部署方式，以及从项目实践中提炼的设计方法。主要读者是项目维护者、部署者和接续开发者。
+> 部署修订（2026-11-01）：生产采集器迁至 macmini，Windows 容器停用。本篇原 0.2.0 业务算法说明仍适用；部署构建以本文修订及 [生产部署说明](生产部署-macmini.md) 为准。
+
+本文说明猫猫报纸的业务使用方法、完整工程结构、配置和数据契约、每日采集与知识库同步流程、Docker 生产部署方式，以及从项目实践中提炼的设计方法。主要读者是项目维护者、部署者和接续开发者。
 
 ## 文档范围与状态
 
 本文以 **2026-10-26、版本 0.2.0** 的源码为基线，功能实现基线提交为 `8ec636f`。覆盖范围参照 NyaaRink 技术文档的“操作流程 → 产品能力 → 工程与生命周期 → 数据和凭据 → 运维与验收 → 可复用设计”组织，并按新闻采集项目的实际职责展开。
 
-NyaaNews 是本机运行的 Python 定时批处理程序。RSS/Atom 用于发现候选，程序抓取公开网页并抽取原语言正文，保存 Markdown，再通过既有 AstrBot 的知识库接口同步。当前没有 Web GUI、对外 REST 服务或 MCP 服务，也不在生产采集链路中调用大模型。
+NyaaNews 是运行于 Docker 的 Python 定时批处理程序。RSS/Atom 用于发现候选，程序抓取公开网页并抽取原语言正文，保存 Markdown，再通过既有 AstrBot 的知识库接口同步。当前没有 Web GUI、对外 REST 服务或 MCP 服务，也不在生产采集链路中调用大模型。
 
-本项目采集器只部署在本机 Docker Desktop。外部 AstrBot 维持其既有部署；放置在知识库主机上的 SSH 网关是 API 接入与备份辅助程序，不执行新闻发现、抓取或定时采集。
+本项目采集器自 2026-11-01 起部署在 macmini Docker；本机负责开发、构建和推送。外部 AstrBot 维持其既有部署；放置在知识库主机上的 SSH 网关是 API 接入与备份辅助程序，不执行新闻发现、抓取或定时采集。
 
 开发状态的唯一事实来源仍是 [开发计划 SSOT](开发计划-SSOT.md)。本文提供架构解释与实现参考；具体维护步骤见 [运维说明](运维说明.md)，本轮交付证据见 [阶段交接 007](阶段交接-007.md)。后续版本改变代码时，应同步更新本文，不能把历史验证结果当作新的实测结论。
 
@@ -103,8 +105,10 @@ NyaaNews/
 ├── pyproject.toml                    # 包信息、依赖和 CLI 声明
 ├── requirements.lock                 # 运行依赖版本与哈希
 ├── Dockerfile
+├── docker-compose.publish.yml        # 生产镜像部署
+├── restart.py                        # 生产存储预检、拉取、重启、健康核验
 ├── docker-compose.yml
-├── rebuild.py                        # 只构建本机镜像
+├── rebuild.py                        # 构建推送；--skip-push 仅本机构建
 ├── .gitignore / .dockerignore
 ├── config/                           # 无私人内容的配置示例
 ├── src/nyaanews/
@@ -150,7 +154,7 @@ NyaaNews/
 
 ```mermaid
 flowchart LR
-    P[私有配置 .env] -->|只读挂载| N[NyaaNews 本机容器]
+    P[私有配置 .env] -->|只读挂载| N[NyaaNews 生产容器]
     C[cron 每日任务] --> N
     N -->|公网 HTTP/HTTPS| F[RSS / Atom 与公开文章]
     N -->|绑定目录 /data| D[宿主机大容量数据盘]
@@ -159,13 +163,13 @@ flowchart LR
     G -->|回环 HTTP / JWT| A[AstrBot 知识库 API]
 ```
 
-本机 Compose 只有一个 `nyaanews` 服务，不发布 HTTP 端口，不挂载 Docker socket。新闻正文网络访问只允许公网目标；知识库访问走单独配置的 SSH 连接，两条网络路径职责不同。
+开发与生产 Compose 均只有一个 `nyaanews` 服务，不发布 HTTP 端口，不挂载 Docker socket。新闻正文网络访问只允许公网目标；知识库访问走单独配置的 SSH 连接，两条网络路径职责不同。
 
-需要代理时，SSH 可以通过配置的 SOCKS5 入口连接，仍校验目标 SSH 主机密钥。这个配置不用于新闻 HTTP 请求。当前部署使用既有宿主机代理服务；它是外部运行依赖，容器重启不会替它启动或修复。
+需要代理时，SSH 可以通过配置的 SOCKS5 入口连接，仍校验目标 SSH 主机密钥。这个配置不用于新闻 HTTP 请求。历史本机部署使用宿主机代理；生产配置关闭此代理，使用直接 SSH 连接。
 
 ### 4. 存储与运行目录
 
-本机数据根目录按工作空间规则放在 `E:/DockerRes/NyaaNews`，Compose 从 `HOST_DATA_DIR` 读取并绑定为 `/data`。
+生产数据根目录为 macmini 的 `/root/DockerContainer/DockerRes/NyaaNews`，Compose 从 `HOST_DATA_DIR` 读取并绑定为 `/data`。数据库备份独立挂载到统一备份目录；本地 `E:/DockerRes/NyaaNews` 保留迁移前副本。
 
 | 目录 / 文件 | 内容与生命周期 |
 | --- | --- |
@@ -522,12 +526,13 @@ stateDiagram-v2
 
 ```console
 python rebuild.py
-docker compose --env-file .env/runtime.env up -d
+# 在生产机部署目录执行
+python3 restart.py
 docker exec nyaanews python -m nyaanews.cli check
 docker exec nyaanews python -m nyaanews.cli status
 ```
 
-`rebuild.py [--no-cache]` 构建 `nyaanews:local`，不自动发布或启动。Compose 使用 `restart: unless-stopped`；更新镜像后再次 `up -d` 才会替换容器。本文中的命令是操作参考，不能把阅读文档视为要求立即重建或重启。
+`rebuild.py [--no-cache]` 默认构建并推送私有仓库的 Git SHA 与 latest 标签，不启动容器；`--skip-push` 才只构建 `nyaanews:local`。Compose 使用 `restart: unless-stopped`；更新镜像后再次 `up -d` 才会替换容器。本文中的命令是操作参考，不能把阅读文档视为要求立即重建或重启。
 
 Dockerfile 安装 cron、tini、OpenSSH 客户端、时区和 CA 证书，只 COPY 依赖锁、src 和 `ops/container.py`。`.env/`、`.ref/`、Git 元数据、新闻、数据库等由构建忽略规则排除；`kb_gateway.py` 不会作为采集容器内的监听服务启动。
 
@@ -539,13 +544,13 @@ Compose 将 `/tmp` 设为 128 MiB tmpfs，私有配置只读，数据目录不�
 
 cron 文件显式包含 PATH、PYTHONPATH、REQUIRE_MOUNT。任务执行 `container.py tick`，tick 启动 CLI `run`；子进程结束后写 scheduler.json，并返回相同退出码。`scheduler.json.attempt` 当前记录的是该 tick 完成后的时间，不是触发瞬间。
 
-容器启动不自动跑一次采集，也不会补跑关机漏掉的定时点。宿主机、Docker Desktop 和需要的外部网络服务必须在计划时间可用。停止容器使用：
+容器启动不自动跑一次采集，也不会补跑关机漏掉的定时点。生产宿主机、Docker 服务和需要的外部网络服务必须在计划时间可用。停止容器使用：
 
 ```console
 docker compose --env-file .env/runtime.env down
 ```
 
-该操作停止服务，绑定目录中的正式数据仍保留。项目不提供远程部署 restart.py 或镜像仓库发布流程。
+该操作停止服务，绑定目录中的正式数据仍保留。生产专用 `docker-compose.publish.yml` 及 `restart.py` 提供存储预检、拉取、重启和健康检查；仓库地址只来自私有配置并掩码输出。
 
 ### 3. 健康检查与报告含义
 
@@ -629,7 +634,7 @@ $env:PYTHONPATH = 'src'
 - 模拟三日和一次真实 cron 不等于连续三个真实运行日观察；截至本文基线，该观察尚未满期。
 - 单个 SQLite 文件快照不等于跨向量索引原子备份；完整恢复演练尚未完成。
 - 缺额继续备用来源已实现；定时任务之外的日内预抓、历史分页、自动漏日补采、备用知识库和高可用多实例尚未实现。
-- 本项目为单实例本机部署，`discover` 锁边界、临时目录命名和任务归属文件都没有按多实例并发服务进行完整设计与验收。
+- 本项目为单实例生产部署，`discover` 锁边界、临时目录命名和任务归属文件都没有按多实例并发服务进行完整设计与验收。
 - 日期/分类和已验证记录的修订目前需要维护操作；不能假定配置一改就会重新审核所有历史文章或清理远端旧版本。
 
 ### 3. 接续开发的入口
